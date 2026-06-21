@@ -85,11 +85,20 @@ jobs:
 
       # Sign by digest, not tag: tags are mutable, the digest is the image's
       # immutable identity. Keyless (OIDC) — no signing key to leak or rotate.
+      #
+      # metadata-action (v6.1.0) exports `tags`/`json` but no bare image-name
+      # output, so derive the image from the first tag (highest priority → the
+      # exact-version tag), which the action has already lowercased to match
+      # what was pushed. `sed 's/:[^:]*$//'` strips only the tag (the last
+      # colon + trailing non-colons), leaving any registry port intact.
       - name: Sign image by digest
-        run: cosign sign --yes "${IMAGE}@${DIGEST}"
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
-          IMAGE: ${{ steps.meta.outputs.images }} # lowercased, avoids mixed-case repo bugs
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          image="$(printf '%s\n' "$TAGS" | head -n1 | sed 's/:[^:]*$//')"
+          cosign sign --yes "${image}@${DIGEST}"
 
   release:
     name: Create GitHub release
