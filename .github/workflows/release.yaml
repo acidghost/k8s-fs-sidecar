@@ -42,20 +42,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Tag mode → semver (+ latest, but prereleases never claim latest/major/minor).
-      # Manual mode → a single dev-<sha> tag for ad-hoc testing.
-      # Each line resolves to '' (ignored by metadata-action) when its event
-      # is not active — keep the `|| ''` or a stray boolean becomes a tag.
+      # Image tags by mode:
+      #   push, stable (v1.2.3)          → :1.2.3, :1.2, :1, :latest
+      #   push, prerelease (v1.2.3-rc.1) → :1.2.3-rc.1  (rolling tags suppressed)
+      #   workflow_dispatch              → :dev-<sha>   (semver rules are inert on a branch ref)
+      #
+      # Prerelease guard: on `push: tags` there is no github.event.release
+      # object (that's a `release`-event field), so we detect a prerelease by
+      # the '-' in the tag name (semver pre-release separator) instead — robust
+      # for our v<major>.<minor>.<patch>[-<pre>] convention. `${{ }}` cannot
+      # nest, so the dev line keeps an event guard while the other lines inline
+      # their own `enable=${{ }}`.
       - id: meta
         uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
         with:
           images: ghcr.io/${{ github.repository }}
+          flavor: latest=false # own `latest` explicitly via the raw rule below
           tags: |
             ${{ github.event_name == 'workflow_dispatch' && format('type=raw,value=dev-{0}', github.sha) || '' }}
-            ${{ github.event_name == 'push' && 'type=semver,pattern={{version}}' || '' }}
-            ${{ github.event_name == 'push' && 'type=semver,pattern={{major}},enable={{!prerelease}}' || '' }}
-            ${{ github.event_name == 'push' && 'type=semver,pattern={{major}}.{{minor}},enable={{!prerelease}}' || '' }}
-            ${{ github.event_name == 'push' && 'type=raw,value=latest,enable={{!prerelease}}' || '' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}},enable=${{ !contains(github.ref_name, '-') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref_name, '-') }}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && !contains(github.ref_name, '-') }}
 
       - id: build
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0

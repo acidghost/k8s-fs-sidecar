@@ -179,7 +179,12 @@ release step differ. `linux/amd64` is the only platform today.
 - Tag mode produces `:1.0.0`, `:1.0`, `:1`, and `:latest`.
 - Prereleases (`v1.0.0-rc.1`) get `:1.0.0-rc.1` only — they never claim
   `latest`, `:1`, or `:1.0`, so a release candidate cannot hijack the stable
-  image. This is enforced via `enable={{!prerelease}}` on those tag rules.
+  image. The `{{major}}`, `{{major}}.{{minor}}`, and `latest` rules carry
+  `enable=${{ !contains(github.ref_name, '-') }}` — the `-` is the semver
+  pre-release separator. (The canonical `!github.event.release.prerelease`
+  guard is useless here: that object only exists on the `release` event, not
+  on `push: tags`.) `flavor: latest=false` keeps `latest` under explicit
+  control rather than metadata-action's auto behavior.
 - `:latest` is exclusively owned by tag-triggered non-prerelease runs; the
   manual `dev-<sha>` path never touches it, so there is no race between the
   two modes over the floating tag.
