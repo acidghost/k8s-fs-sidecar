@@ -110,12 +110,21 @@ jobs:
     steps:
       # gh is pre-installed and authed via GITHUB_TOKEN — no third-party
       # release action needed (smaller supply-chain surface).
+      #
+      # GH_REPO pins the repo explicitly so gh doesn't shell out to `git` for
+      # repo detection. This job deliberately has no `actions/checkout` step
+      # (the build+push happened in the other job on a different runner); without
+      # GH_REPO, gh would fail with "not a git repository". gh's only other git
+      # call (gitTagInfo) discards its error and is unreachable without
+      # --notes-from-tag, which we don't use; --verify-tag/--target hit the API.
       # --generate-notes: GitHub auto-builds the changelog since the previous release.
-      # --verify-tag: abort if the remote tag doesn't match what we're releasing.
+      # --verify-tag: aborts via the API if the remote tag is missing.
+      # --target: pins the release to the exact built commit (API target_commitish).
       # The `gh release view` guard makes re-runs idempotent instead of clobbering.
       - name: Create release with auto-generated notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
         run: |
