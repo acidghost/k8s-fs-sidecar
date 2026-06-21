@@ -98,10 +98,10 @@ a **different** uid, you have two options:
 
 ```yaml
 env:
-- name: FS_SIDECAR_FILE_MODE
-  value: "0644"
-- name: FS_SIDECAR_DIR_MODE
-  value: "0755"
+  - name: FS_SIDECAR_FILE_MODE
+    value: "0644"
+  - name: FS_SIDECAR_DIR_MODE
+    value: "0755"
 ```
 
 Modes are parsed as octal; setuid/setgid/sticky bits (`>0777`) are rejected.
@@ -124,14 +124,19 @@ and how to add a new resource type or a new configuration knob.
 
 ## Container image
 
-Pre-built images are published to the GitHub Container Registry on demand
-via the _Publish Image_ workflow:
+Pre-built images are published to the GitHub Container Registry by the
+_Release_ workflow, which runs whenever a `v*` tag is pushed:
 
 ```
-ghcr.io/acidghost/k8s-fs-sidecar:latest
+ghcr.io/acidghost/k8s-fs-sidecar:1.0.0   # exact version
+ghcr.io/acidghost/k8s-fs-sidecar:1.0     # major.minor
+ghcr.io/acidghost/k8s-fs-sidecar:1       # major
+ghcr.io/acidghost/k8s-fs-sidecar:latest  # newest non-prerelease
 ```
 
-The image is signed with cosign and ships with provenance + SBOM.
+Every published image is signed with cosign (keyless, by digest) and ships
+with provenance and an SBOM. See [ARCHITECTURE.md](ARCHITECTURE.md) →
+_Release & distribution_ for the security model and how to verify an image.
 
 ## License
 

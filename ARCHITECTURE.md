@@ -99,7 +99,7 @@ disconnect) returns the current `rv` so the loop resumes without re-listing.
 ### Atomic file replacement
 
 `WriteFile` never truncates the destination in place. It writes to a temp file
-in the *same directory* (so the rename stays on one filesystem), `fsync`s,
+in the _same directory_ (so the rename stays on one filesystem), `fsync`s,
 `chmod` to the configured file mode, closes, and then `rename`s over the
 the target. A failure at any
 step removes the temp file, so no partial state is observable by readers and
@@ -118,12 +118,12 @@ workload, which is event-driven and low-frequency.
 
 Three layers, all in-process and hermetic:
 
-| Layer       | File                              | What it covers                                              |
-| ----------- | --------------------------------- | ----------------------------------------------------------- |
-| Unit        | `internal/processor/*_test.go`    | pure helpers, file I/O on `t.TempDir`, state transitions    |
-| Unit        | `internal/filter/filter_test.go`  | label/annotation matching                                   |
-| Unit        | `internal/k8s/client_test.go`     | in-cluster vs kubeconfig branching via swappable seams      |
-| Integration | `internal/watcher/e2e_test.go`    | full List→Watch→process→disk loop against the fake clientset |
+| Layer       | File                             | What it covers                                               |
+| ----------- | -------------------------------- | ------------------------------------------------------------ |
+| Unit        | `internal/processor/*_test.go`   | pure helpers, file I/O on `t.TempDir`, state transitions     |
+| Unit        | `internal/filter/filter_test.go` | label/annotation matching                                    |
+| Unit        | `internal/k8s/client_test.go`    | in-cluster vs kubeconfig branching via swappable seams       |
+| Integration | `internal/watcher/e2e_test.go`   | full List→Watch→process→disk loop against the fake clientset |
 
 The fake clientset (`k8s.io/client-go/kubernetes/fake`) honors
 `ResourceVersion` and supports `WatchReactor`s, which lets the integration
@@ -156,3 +156,92 @@ is part of `client-go` (no extra module). Dependencies are vendored.
   filters client-side; for label mode you could push a `labels.Require*`
   selector into `metav1.ListOptions.LabelSelector` to reduce wire bytes and
   narrow RBAC. Annotation mode genuinely requires client-side filtering.
+
+## Release & distribution
+
+The container image is the only distribution artifact. The `release.yaml`
+workflow (`.github/workflows/release.yaml`) builds, signs, and publishes it,
+and on tag creates a GitHub Release with auto-generated notes.
+
+### Two trigger modes, one build path
+
+| Trigger              | Image tags                     | GitHub Release |
+| -------------------- | ------------------------------ | -------------- |
+| `push` on a `v*` tag | semver (+ `latest` if not pre) | yes            |
+| `workflow_dispatch`  | `dev-<sha>` only               | no             |
+
+The build (checkout → buildx → login → metadata → build-push → cosign →
+sign) is identical in both modes; only the tag rules and the optional
+release step differ. `linux/amd64` is the only platform today.
+
+### Image tags
+
+- Tag mode produces `:1.0.0`, `:1.0`, `:1`, and `:latest`.
+- Prereleases (`v1.0.0-rc.1`) get `:1.0.0-rc.1` only — they never claim
+  `latest`, `:1`, or `:1.0`, so a release candidate cannot hijack the stable
+  image. This is enforced via `enable={{!prerelease}}` on those tag rules.
+- `:latest` is exclusively owned by tag-triggered non-prerelease runs; the
+  manual `dev-<sha>` path never touches it, so there is no race between the
+  two modes over the floating tag.
+
+### Security model
+
+The design assumes three classes of adversary: an unprivileged
+collaborator, a compromised GitHub Action, and an attacker who later
+repoints a tag. The controls, in defense-in-depth order:
+
+1. **Job-split permissions.** Top-level `permissions: {}` denies everything;
+   each job grants only what it needs. `build-and-push` has
+   `packages: write` + `id-token: write` (cosign) but **no** `contents: write`;
+   `release` has `contents: write` but **no** `packages: write`. No single job
+   can both ship an image and forge a release for it.
+2. **Sign by digest, not tag.** Tags are mutable; the registry digest is the
+   image's immutable identity. `cosign sign ${IMAGE}@${DIGEST}` signs the
+   exact bytes that were pushed, so a later tag repoint cannot silently swap
+   the signed content.
+3. **Keyless signing (OIDC).** `id-token: write` + `cosign sign --yes` uses
+   a short-lived sigstore certificate bound to this workflow, repo, and ref.
+   There is no long-lived signing key to leak or rotate.
+4. **Provenance + SBOM.** `provenance: mode=max` and `sbom: true` attach
+   in-toto SLSA provenance and a software bill of materials to the image, so
+   consumers can audit what was built and from what source.
+5. **No third-party release action.** The release is created with the
+   pre-installed `gh` CLI (authed via `GITHUB_TOKEN`), shrinking the
+   supply-chain surface versus depending on a release-publishing action.
+6. **Tag-anchored release.** `--verify-tag` aborts if the remote tag doesn't
+   match what the run thinks it's releasing; `--target $SHA` pins the release
+   to the exact built commit. `--generate-notes` builds the changelog from the
+   previous release, so a maintainer can't accidentally inject an arbitrary
+   body.
+7. **Non-cancelling concurrency.** `cancel-in-progress: false` ensures a
+   release run is never killed mid-push by a stray concurrent run.
+
+### Required repo settings (the workflow cannot enforce these)
+
+These are enforced by GitHub itself and must be set once in the UI. The
+workflow above is only half-secure without them:
+
+- **Tag protection rule** on `v*` (Settings → Tags). Restricts who can push
+  release tags. Without it, any collaborator with push access can mint a
+  release.
+- **Immutable releases** (release settings). Prevents a release's git tag and
+  assets from being modified or deleted after publish — closes the
+  force-push-a-moved-tag attack.
+- **Default `GITHUB_TOKEN` read-only** (Settings → Actions → General →
+  Workflow permissions). Belt-and-suspenders on top of the explicit
+  `permissions:` grants; confirm it's not `read-and-write`.
+- **Branch protection on `main`** with required CI checks — the foundation
+  the release builds on.
+
+### Verifying a published image
+
+```bash
+digest=$(crane digest ghcr.io/acidghost/k8s-fs-sidecar:1.0.0)
+cosign verify ghcr.io/acidghost/k8s-fs-sidecar@${digest} \
+  --certificate-identity-regexp "https://github.com/acidghost/k8s-fs-sidecar/.github/workflows/release.yaml@refs/tags/.*" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify-attestation ghcr.io/acidghost/k8s-fs-sidecar@${digest} \
+  --type slsaprovenance \
+  --certificate-identity-regexp "https://github.com/acidghost/k8s-fs-sidecar/.github/workflows/release.yaml@refs/tags/.*" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```

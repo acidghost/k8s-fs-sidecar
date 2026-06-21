@@ -60,7 +60,7 @@ Keeping them on the same config means `fmt` fixes exactly what `lint`
 checks. Don't run `go fmt` directly — it won't apply `goimports` grouping.
 
 `gosec` findings are real (permissions, path traversal) and should be fixed
-or suppressed with a `//nolint:gosec // <reason>` comment explaining *why*
+or suppressed with a `//nolint:gosec // <reason>` comment explaining _why_
 the suppression is safe. Do not blanket-disable the linter.
 
 ### Vendoring
@@ -75,12 +75,12 @@ Commit `go.mod`, `go.sum`, and the `vendor/` tree together.
 
 ## Testing strategy
 
-| Kind         | Where                             | What                                                          |
-| ------------ | --------------------------------- | ------------------------------------------------------------- |
-| Unit         | `internal/processor/*_test.go`    | helpers, file I/O on `t.TempDir()`, state transitions         |
-| Unit         | `internal/filter/filter_test.go`  | label/annotation matching                                     |
-| Unit         | `internal/k8s/client_test.go`     | client construction branching (in-cluster vs kubeconfig)      |
-| Integration  | `internal/watcher/e2e_test.go`    | full List→Watch→process→disk loop against the fake clientset  |
+| Kind        | Where                            | What                                                         |
+| ----------- | -------------------------------- | ------------------------------------------------------------ |
+| Unit        | `internal/processor/*_test.go`   | helpers, file I/O on `t.TempDir()`, state transitions        |
+| Unit        | `internal/filter/filter_test.go` | label/annotation matching                                    |
+| Unit        | `internal/k8s/client_test.go`    | client construction branching (in-cluster vs kubeconfig)     |
+| Integration | `internal/watcher/e2e_test.go`   | full List→Watch→process→disk loop against the fake clientset |
 
 Guidelines:
 
@@ -113,6 +113,27 @@ A typical change touches one or two packages and stays under ~50 LOC plus tests:
 4. **Update docs** if the change is user-visible (`README.md`) or affects the
    package layout / data flow (`ARCHITECTURE.md`).
 5. **Update `vendor/`** if you added or changed an import (`just vendor`).
+
+## Cutting a release
+
+Releases are cut by pushing a `v*` tag (semver: `v1.0.0`, `v1.0.0-rc.1`).
+The _Release_ workflow then builds and signs the image, publishes the
+semver tags (+ `latest`, unless it's a prerelease), and creates a GitHub
+Release with auto-generated notes. No binaries are attached — the container
+image is the only distribution.
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Prerequisites (repo settings, configured once in the GitHub UI):
+
+- a **tag protection rule** on `v*` — restricts who can push release tags
+- **immutable releases** enabled — prevents tag/asset tampering after publish
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) → _Release & distribution_ for the
+full security model and the required repo settings.
 
 ## License
 
