@@ -1,5 +1,7 @@
 # k8s-fs-sidecar
 
+[![CI](https://github.com/acidghost/k8s-fs-sidecar/actions/workflows/ci.yaml/badge.svg)](https://github.com/acidghost/k8s-fs-sidecar/actions/workflows/ci.yaml)
+
 A small Go sidecar container that watches Kubernetes `ConfigMap`s and `Secret`s
 and materializes their contents as files in a shared volume. Use it to deliver
 configuration to applications that read files (not the Kubernetes API) — without
