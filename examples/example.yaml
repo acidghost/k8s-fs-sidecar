@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: example-deployment
+  labels:
+    app: example
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: example
+  template:
+    metadata:
+      labels:
+        app: example
+    spec:
+      serviceAccountName: sidecar-sa
+      containers:
+      - name: app
+        image: alpine:latest
+        command: ["sh", "-c", "watch -n 5 ls -la /etc/config/"]
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+      - name: sidecar
+        image: ghcr.io/acidghost/k8s-fs-sidecar:latest
+        env:
+        - name: FS_SIDECAR_LABEL
+          value: "config.sync"
+        - name: FS_SIDECAR_LABEL_ANNOTATION
+          value: "label"
+        - name: FS_SIDECAR_FOLDER
+          value: "/etc/config"
+        - name: FS_SIDECAR_RESOURCE
+          value: "both"
+        - name: FS_SIDECAR_NAMESPACE
+          value: "default"
+        - name: FS_SIDECAR_LOG_LEVEL
+          value: "info"
+        - name: FS_SIDECAR_LOG_FORMAT
+          value: "json"
+        # Uncomment to make files world-readable when the consuming container
+        # runs as a different uid. Default is 0600/0700 (owner-only).
+        # - name: FS_SIDECAR_FILE_MODE
+        #   value: "0644"
+        # - name: FS_SIDECAR_DIR_MODE
+        #   value: "0755"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+      volumes:
+      - name: config
+        emptyDir: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  labels:
+    config.sync: "enabled"
+data:
+  config.yaml: |
+    key: value
+    nested:
+      item: test
+  app.properties: |
+    app.name=example
+    app.version=1.0
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config-with-folder
+  labels:
+    config.sync: "enabled"
+  annotations:
+    k8s-sidecar-target-directory: "/etc/config/app"
+data:
+  custom.json: |
+    {"name":"custom","version":"2.0"}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+  labels:
+    config.sync: "enabled"
+type: Opaque
+stringData:
+  password: "super-secret-password"
+  api-key: "abcd1234-5678-90ef-ghij-klmnopqrstuv"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret-with-folder
+  labels:
+    config.sync: "enabled"
+  annotations:
+    k8s-sidecar-target-directory: "/etc/config/secret"
+type: Opaque
+stringData:
+  cert.pem: |
+    -----BEGIN CERTIFICATE-----
+    MIIBkTCB+wIJAKH...
+    -----END CERTIFICATE-----
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sidecar-role
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sidecar-sa
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: sidecar-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sidecar-role
+subjects:
+- kind: ServiceAccount
+  name: sidecar-sa
