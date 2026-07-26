@@ -3,6 +3,7 @@ program := 'k8s-fs-sidecar'
 version := 'SNAPSHOT-'+`git describe --tags --always --dirty 2>/dev/null || printf 'unknown'`
 commit_sha := `(git rev-parse HEAD 2>/dev/null || printf 'unknown') | tr -d '\n'`
 build_time := `date -u '+%Y-%m-%d_%H:%M:%S'`
+install_prefix := `go env GOBIN`
 
 container_engine := 'docker'
 container_registry := 'ghcr.io'
@@ -73,7 +74,7 @@ lint:
     golangci-lint run
 
 install: build
-    cp -v './build/{{program}}-{{goos}}-{{goarch}}' "$(go env GOBIN)/{{program}}"
+    cp -v './build/{{program}}-{{goos}}-{{goarch}}' "{{install_prefix}}/{{program}}"
 
 clean:
     rm -rf build
