@@ -103,7 +103,7 @@ jobs:
             --arg commit "$GITHUB_SHA" \
             --arg source "https://github.com/${GITHUB_REPOSITORY}" \
             --arg version "$VERSION" '
-              .["linux/amd64"].SLSA |
+              .SLSA |
               .buildDefinition.buildType ==
                 "https://github.com/moby/buildkit/blob/master/docs/attestations/slsa-definitions.md" and
               .buildDefinition.externalParameters.request.root.request.args["build-arg:BUILD_COMMIT"] == $commit and
@@ -111,7 +111,7 @@ jobs:
               .buildDefinition.externalParameters.request.root.request.args["vcs:source"] == $source and
               (.runDetails.builder.id | type == "string" and length > 0)
             ' provenance.json >/dev/null
-          jq -e '.["linux/amd64"].SPDX' sbom.json > sbom-linux-amd64.spdx.json
+          jq -e '.SPDX' sbom.json > sbom-linux-amd64.spdx.json
 
       # Sign by digest, not tag: tags are mutable, the digest is the image's
       # immutable identity. Keyless (OIDC) — no signing key to leak or rotate.
