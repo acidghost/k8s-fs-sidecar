@@ -1,8 +1,6 @@
 module github.com/acidghost/k8s-fs-sidecar
 
-go 1.26.0
-
-toolchain go1.26.5
+go 1.26.5
 
 require (
 	github.com/rs/zerolog v1.35.1
