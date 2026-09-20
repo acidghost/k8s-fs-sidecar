@@ -2,6 +2,8 @@ module github.com/acidghost/k8s-fs-sidecar
 
 go 1.26.5
 
+toolchain go1.27.0
+
 require (
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.11.1
